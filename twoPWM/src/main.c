@@ -150,7 +150,7 @@ void InitIO(void)
     P1 = 0x10; P1UR = 0x18; P1M = 0x18;     /* 0B 0001 1000    output*/
     P0 = 0x00; P0UR = 0x25; P0M = 0x25;     /* 0B 0010 0101    output*/
     //add by lu 
-   // P1 |= 0x04;   P1UR |= 0x04;    P1M |= 0x04;  //config  for S_PWM; 
+    P1 |= 0x04;   P1UR |= 0x04;    P1M |= 0x04;  //config  for S_PWM; 
 }
 
 void Get_AD2(void)
