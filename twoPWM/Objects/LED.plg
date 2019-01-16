@@ -1,0 +1,25 @@
+<html>
+<body>
+<pre>
+<h1>礦ision Build Log</h1>
+<h2>Project:</h2>
+E:\工作文件\手电筒\最新资料\手电筒pwm-20181126\手电筒pwm-20181126\手电筒pwm-20181126\LED.uvproj
+Project File Date:  11/29/2018
+
+<h2>Output:</h2>
+Rebuild target 'Target 1'
+assembling OPTIONS_SN8F5702.A51...
+compiling main.c...
+compiling delay.c...
+linking...
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?_DELAY1US?DELAY
+*** WARNING L16: UNCALLED SEGMENT, IGNORED FOR OVERLAY PROCESS
+    SEGMENT: ?PR?DELAY1S?DELAY
+Program Size: data=51.6 xdata=0 code=1219
+creating hex file from ".\Objects\LED"...
+".\Objects\LED" - 0 Error(s), 2 Warning(s).
+Load "E:\\工作文件\\手电筒\\最新资料\\手电筒pwm-20181126\\手电筒pwm-20181126\\手电筒pwm-20181126\\Objects\\LED" 
+Flash Erase Done.
+Flash Write Done: 1219 bytes programmed.
+Flash Verify Done: 1219 bytes verified.

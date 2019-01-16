@@ -1,0 +1,171 @@
+C51 COMPILER V9.59.0.0   TIMER0                                                            10/25/2018 13:27:21 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE TIMER0
+OBJECT MODULE PLACED IN .\Objects\Timer0.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE src\Timer0.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Inc) DEBUG OBJECTEXTEND P
+                    -RINT(.\Listings\Timer0.lst) TABS(2) OBJECT(.\Objects\Timer0.obj)
+
+line level    source
+
+   1          //-----------------------------------------------------------------------------
+   2          //  FILE:   Timer0.c
+   3          //-----------------------------------------------------------------------------
+   4          //  Copyright 2014 Sonix Technology Corp. All rights reserved. 
+   5          //
+   6          //  AUTHOR:     Sonix
+   7          //  DATE:       2015/08/04
+   8          //
+   9          //  The program is an example of Timer0 to implement it.
+  10          //  you can select mode0~3 by "#define MODE Mode0~3"  
+  11          //    
+  12          //  Timer 0 function List:
+  13          //      1. Mode 0 : 13-bit timer
+  14          //      2. Mode 1 : 16-bit timer
+  15          //      3. Mode 2 : 8 -bit auto-reload Timer
+  16          //      4. Mode 3 : Timer 0 acts as two independent 8 bit Timers ¡V TL0, TH0. Timer0 and Timer1
+  17          // 
+  18          //  The system clock frequency is IHRC 32MHz
+  19          //
+  20          //  Device:     SN8F5708 
+  21          //  Tool chain: KEIL C51 V9.50a
+  22          //
+  23          //-----------------------------------------------------------------------------
+  24          // Includes
+  25          //-----------------------------------------------------------------------------
+  26          #include <SN8F5702.h>
+  27          //-----------------------------------------------------------------------------
+  28          // Global Constants 
+  29          //-----------------------------------------------------------------------------
+  30          #define Mode0   1               // 13-bit timer
+  31          #define Mode1   2               // 16-bit timer
+  32          #define Mode2   3               // 8 -bit auto-reload Timer
+  33          #define Mode3   4               // Timer 0 acts as two independent 8 bit Timers
+  34          #define MODE    Mode3           // select mode of timer0
+  35          //=============================================================================
+  36          //    T0=1MS  if(MODE = Mode3) T1=150US;
+  37          //=============================================================================
+  38          #define TCON0_Value 0X00        //T0:Fclk = Fhosc/128 = 32M/128 = 250K
+  39                                          //if MODE = Mode3,T1:Fclk = Fcpu/12 = Fhosc/2/12 = 16M/12
+  40                                    
+  41          #if   MODE == Mode0
+              #define TM0D_Value  0X04        //MODE0 13BIT-TIME,Fhosc
+              #define TH0_Value   0XF8        //TH[7£º0]TL[4£º0]=1111 1000 0 0110 = 1F06   8192 - 7942 = 250     250 * 1/Fclk
+             - = 250 * 128/32M = 1MS
+              #define TL0_Value   0X06  
+              
+              #elif MODE == Mode1
+              #define TM0D_Value  0X05        //MODE1 16BIT-TIME,Fhosc
+              #define TH0_Value   0XFF        //65536 - 65286 = 250    250 * 1/Fclk = 250 * 128/32M = 1MS
+              #define TL0_Value   0X06  
+              
+              #elif MODE == Mode2       
+              #define TM0D_Value  0X06        //MODE2 8BIT-TIME,Fhosc
+              #define TH0_Value   0X06        //Auto-reload
+C51 COMPILER V9.59.0.0   TIMER0                                                            10/25/2018 13:27:21 PAGE 2   
+
+              #define TL0_Value   0X06        //256 - 6 = 250    250 * 1/Fclk = 250 * 128/32M = 1MS
+              
+              #elif MODE == Mode3
+  57          #define TM0D_Value  0X07        //MODE3,TWO 8BIT-TIME
+  58          #define TH0_Value   0X38        //256 - 56 = 200,  200 * 1/Fclk = 200 * 12/16M = 150US
+  59          #define TL0_Value   0X06        //256 - 250
+  60          #endif
+  61          //-----------------------------------------------------------------------------
+  62          // Global Variables 
+  63          //-----------------------------------------------------------------------------
+  64          
+  65          //-----------------------------------------------------------------------------
+  66          // Function Prototypes 
+  67          //-----------------------------------------------------------------------------
+  68          void Timer0_Init(void);
+  69          //-----------------------------------------------------------------------------
+  70          // Main loop
+  71          //-----------------------------------------------------------------------------
+  72          void main(void)
+  73          {    
+  74   1          CLKSEL = 0x06;              // Fcpu = 32M/2 = 16M
+  75   1          CLKCMD = 0X69;
+  76   1          CKCON = 0X10;               // Wait 2 Cycle From = 8M
+  77   1        
+  78   1          WDTR = 0x5A;                // clear watchdog if watchdog enable
+  79   1        
+  80   1          P0 = 0;
+  81   1          P0M = 0;
+  82   1          P0UR = 0xFF;
+  83   1        
+  84   1          P1 = 0;
+  85   1          P1M = 0;
+  86   1          P1UR = 0xFF;
+  87   1        
+  88   1          P2 = 0;
+  89   1          P2M = 0x03;                // P2.0 & P2.1 output low
+  90   1          P2UR = 0xFF;
+  91   1          
+  92   1          Timer0_Init();
+  93   1          
+  94   1          while (1) 
+  95   1          {
+  96   2              WDTR = 0x5A;            // clear watchdog if watchdog enable
+  97   2          }
+  98   1      }
+  99          //-----------------------------------------------------------------------------
+ 100          //  Function:   void Timer0_Init(void)
+ 101          //  Description:
+ 102          //          timer0's mode0 setting
+ 103          //-----------------------------------------------------------------------------
+ 104          void Timer0_Init(void)
+ 105          {
+ 106   1          TMOD = TM0D_Value;          // Mode of Timer 0 
+ 107   1          TH0 = TH0_Value;            // Initial values
+ 108   1          TL0 = TL0_Value;
+ 109   1          TCON0 = TCON0_Value;        // T0EXT = Fhosc.
+ 110   1                                      // T0RATE is Fhosc/128 = 250K
+ 111   1      
+ 112   1          ET0 = 1;                    // Timer 0 isr enable
+ 113   1          EAL = 1;                    // Golbal Interrupt enable
+ 114   1          TR0 = 1;                    // enable Timer 0 Run control
+ 115   1        #if MODE == Mode3
+C51 COMPILER V9.59.0.0   TIMER0                                                            10/25/2018 13:27:21 PAGE 3   
+
+ 116   1          ET1 = 1;                    // Timer 1 isr enable
+ 117   1          TR1 = 1;                    // enable Timer 1 Run control
+ 118   1        #endif
+ 119   1      }
+ 120          //-----------------------------------------------------------------------------
+ 121          //  Timer0 ISR
+ 122          //-----------------------------------------------------------------------------
+ 123          void Timer0_ISR(void) interrupt ISRTimer0   // Vector @  0x0B
+ 124          {
+ 125   1      #if     MODE == Mode3    
+ 126   1          TL0 = TL0_Value;            // if Timer0 is Mode 3,The timer TL0 is controlled by T0            
+ 127   1      #elif   MODE != Mode2
+                  TH0 = TH0_Value;            // if Timer0 is Mode 2, the TL0 will auto reload  
+                  TL0 = TL0_Value;            // and the reload value is kept in TH0 
+              #endif        
+ 131   1          P20 = ~ P20;                // P2.4 toggle
+ 132   1      }
+ 133          //-----------------------------------------------------------------------------
+ 134          //  Timer1 ISR
+ 135          //-----------------------------------------------------------------------------
+ 136          #if MODE == Mode3
+ 137          void Timer1_ISR(void) interrupt ISRTimer1   // Vector @  0x1B
+ 138          { 
+ 139   1          TH0 = TH0_Value;            // timer1 used
+ 140   1          P21 = ~ P21;                // P2.6 toggle
+ 141   1      }
+ 142          #endif
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =     78    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

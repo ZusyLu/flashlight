@@ -1,0 +1,77 @@
+C51 COMPILER V9.59.0.0   DELAY                                                             01/15/2019 11:07:35 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE DELAY
+OBJECT MODULE PLACED IN .\Objects\delay.obj
+COMPILER INVOKED BY: D:\Program Files (x86)\Keil_v5\C51\BIN\C51.EXE src\delay.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Inc) D
+                    -EBUG OBJECTEXTEND PRINT(.\Listings\delay.lst) OBJECT(.\Objects\delay.obj)
+
+line level    source
+
+   1          #include "common.h"
+   2          /*
+   3          void testdelay(void)
+   4          {
+   5                  while(1)
+   6                  {
+   7                          P01 = 1;
+   8                          Delay1us(1);
+   9                          P01 = 0;
+  10                          Delay1us(1);
+  11                  }
+  12          }
+  13          */
+  14          void Delay1us(unsigned int n)
+  15          {
+  16   1          unsigned int i;
+  17   1          for (i=0; i<n; i++)
+  18   1              {
+  19   2                      _nop_();             //1¸ö_nop_()=6us.
+  20   2                      _nop_();             //1¸ö_nop_()=6us.
+  21   2                      _nop_();             //1¸ö_nop_()=6us.
+  22   2                      _nop_();             //1¸ö_nop_()=6us.
+  23   2                      _nop_();             //1¸ö_nop_()=6us.
+  24   2                      _nop_();             //1¸ö_nop_()=6us.
+  25   2          }
+  26   1      }
+  27          
+  28          void Delay1ms(unsigned int n)
+  29          {
+  30   1          unsigned int i, j;
+  31   1          i = 0;
+  32   1          j = 0;
+  33   1          for (i=0; i<n; i++) {
+  34   2              for (j=0; j<40; j++) {
+  35   3                 _nop_();        
+  36   3              }
+  37   2          }
+  38   1      }
+  39          void Delay1s(void)
+  40          {
+  41   1          unsigned int i, j;
+  42   1          i = 0;
+  43   1          j = 0;
+  44   1          for (i = 0; i < 218; i++) 
+  45   1              {
+  46   2              for (j = 0; j < 200; j++) 
+  47   2                      {
+  48   3                              _nop_(); 
+  49   3              }
+  50   2          }
+  51   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+C51 COMPILER V9.59.0.0   DELAY                                                             01/15/2019 11:07:35 PAGE 2   
+
+   CODE SIZE        =     87    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

@@ -1,0 +1,482 @@
+C51 COMPILER V9.59.0.0   MAIN                                                              01/15/2019 11:07:35 PAGE 1   
+
+
+C51 COMPILER V9.59.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\Objects\main.obj
+COMPILER INVOKED BY: D:\Program Files (x86)\Keil_v5\C51\BIN\C51.EXE Src\main.c OPTIMIZE(8,SPEED) BROWSE INCDIR(.\Inc) DE
+                    -BUG OBJECTEXTEND PRINT(.\Listings\main.lst) OBJECT(.\Objects\main.obj)
+
+line level    source
+
+   1          #include "common.h"
+   2          
+   3          //port
+   4          #define BOOST           P14         /* P14---->P05;干电池升压输出控制 */
+   5          #define LED_CON         P13         /* LED控制 */
+   6          #define USB_INPUT       P11         /* USB+5V输入检测 */
+   7          #define ADC_INPUT       P10         /* 电池电压检测ADC */
+   8          #define CHARGE_LED      P02         /*快充控制 */
+   9          #define GREEN_LED       P00         /* 充电完成指示灯 */
+  10          #define RED_LED         P05        /* P05---P14;充电状态指示灯 + 慢充控制 */
+  11          
+  12          #define S_PWM           P12       /* simulation PWM channel */
+  13          int led_mode=0;
+  14          
+  15          //#define BAT_Propor      3.0f        /* 电池电量检测分压比例 */
+  16          #define ch_err          339        /* 0.4v */
+  17          #define BAT_Li_Max      2935       /* 4.3 锂电池最大电压值 */
+  18          #define BAT_Li_Min      1706       /* (2.5f/3* 4096/2), 锂电池最小电压值 */
+  19          #define BAT_Li_ch_end   2935  // (4.3f/3* 4096/2)       /* 锂电池停充电压 */
+  20          #define BAT_Li_Pull     2901  // (4.25f/3* 4096/2)       /* 锂电池慢充电压 */
+  21          #define BAT_Dry         1092    // (1.6f/3* 4096/2)     /* 干电池电压值 */
+  22          #define BAT_Dry_LOW     546    // (1.6f/3* 4096/2)     /* 干电池电压值 */
+  23          #define BAT_Dry_3       2935   //(4.3f/3* 4096/2)      /* 3节干电池电压值 */
+  24          #define charge_off       100    //                    停充电流
+  25          bit ch_full=0;
+  26          bit incharging=0;
+  27          bit TRY=0;
+  28          bit is4v5=0;
+  29          bit slowcharge=0;
+  30          bit ischarge=0;
+  31          
+  32          unsigned char cnt=0 ;
+  33          
+  34          typedef enum {LED_OFF = 0, LED_ON} LED_Status;
+  35          typedef enum {S_PWM_OFF = 0, S_PWM_ON} S_PWM_Status;
+  36          typedef enum {BOOST_ON = 0, BOOST_OFF} BOOST_Status;
+  37          typedef enum {USB_OFF = 0, USB_ON} USB_Status;
+  38          
+  39          BOOL BAT_Li_Flag = FALSE;       /* 锂电池标志 */
+  40          
+  41          //adc--
+  42          uint16_t AD_Data = 0;
+  43          uint16_t AD_Data2 = 0;
+  44          uint16_t total = 0;
+  45          //uint16_t olddata=0;
+  46          //uint16_t wave_min = 4095;
+  47          uint16_t adc_max = 0;
+  48          //uint16_t adc_max2 = 0;
+  49          //uint16_t wave_peak = 0;
+  50          uint16_t        AD_mid=0;
+  51          //uint16_t wavelevel1 = 4095;
+  52          //uint16_t wavelevel2 = 0;
+  53          
+  54          uint16_t AD_Buffer = 0;
+C51 COMPILER V9.59.0.0   MAIN                                                              01/15/2019 11:07:35 PAGE 2   
+
+  55          
+  56          
+  57          int power=0;
+  58          static  uint16_t                Get_AD();
+  59          uint16_t adva[8];
+  60          
+  61          void InitADC(void);
+  62          CHARGE2=0;
+  63          
+  64          uint8_t sample=0;
+  65          uint8_t flash_times=0;
+  66          
+  67          unsigned char flag = 0;
+  68          
+  69          
+  70          
+  71          #define TCON_Value  0x40               //TR1=Enable;
+  72          #define TCON0_Value     0x00                            // FOSC=torate  fosc/128=250k=0.004ms  *12 =0.048ms         
+  73          #define TM0D_Value      0x60                            //T1：01xxxxxx:fosc/t1rate;  mode xx10xxxx: 8-bit up counting timer with reload
+             - support    
+  74          #define TH1_Value               0xc0                            //Auto-reload
+  75          #define TL1_Value               0xc0                            //256 - 192(c0) = 64  256-252=4  62.5us 250 * 1/Fclk = 250 * 128/32M = 1MS   //
+             -85=0.5ms  250hz=4ms  采集8个 5ms=
+  76          void Timer0_Init(void)
+  77          {
+  78   1          TMOD = TM0D_Value;          // Mode of Timer 0 
+  79   1          TH1 = TH1_Value;            // Initial values
+  80   1          TL1 = TL1_Value;
+  81   1          TCON0 = TCON0_Value;        // T0EXT = Fhosc.
+  82   1          TCON=    TCON_Value ;                       // T0RATE is Fhosc/128 = 250K
+  83   1      
+  84   1          ET1 = 1;                    // Timer 0 isr enable
+  85   1          EAL = 1;                    // Golbal Interrupt enable
+  86   1          TR1 = 1;                    // enable Timer 0 Run control
+  87   1      
+  88   1      }
+  89          void initpwm()  
+  90          
+  91            {     
+  92   1           PW1CH = 0x02;      //选择PWCH11作为PWM通道
+  93   1              
+  94   1          PW1M |= 0x10;               // PW1 rate is Fhosc/64 =500khz  2*12us    PWM输出频率危(32/1)/256 = 125KHZ  
+             - PWM周期为8uS
+  95   1      
+  96   1        //  PW1M |= 0x08;             // enable PWM20/21 output
+  97   1          PW1M |= 0x04;               // enable PWM10/11 output
+  98   1      
+  99   1      //    PW1M |= 0x01;                     // enable PW1 pulse output function (PW1PO)
+ 100   1      
+ 101   1          PW1YH = 0x01;//0x08;//0x01;
+ 102   1          PW1YL = 0x00;                               // set PW1 cycle control    0800   250hz  01==2khz
+ 103   1      
+ 104   1          PW1DH = 0x00;//0x07;//0x00;
+ 105   1          PW1DL = 0x00;               // set PWM duty control   64    3f 占空比25％   13*16+9=85%
+ 106   1      
+ 107   1          // the dead band control : B point > A point (Must)
+ 108   1          PW1BH = PW1DH;
+ 109   1          PW1BL = PW1DL;              // B point dead band control
+ 110   1      
+ 111   1          PW1A = 0x00;                // A point dead band control
+ 112   1      
+ 113   1       //  PW1M |= 0x80;              // Enable PWM output function (PW1EN)
+C51 COMPILER V9.59.0.0   MAIN                                                              01/15/2019 11:07:35 PAGE 3   
+
+ 114   1        // IEN0=1;
+ 115   1              // Enable PWM1 interrupt & clear PWM1F 
+ 116   1              //IEN4 = 0x80;
+ 117   1              // Enable total interrupt 
+ 118   1      //      IEN0 |= 0x80;
+ 119   1              
+ 120   1      }
+ 121          
+ 122          void SetPWM(int mode )
+ 123          {                       
+ 124   1          if(mode==1)
+ 125   1          {
+ 126   2              PW1DH = 0x00;
+ 127   2              PW1DL = 0xe6;  
+ 128   2          }  //low  10% --0x39=21.8  0x40=25%  0x4c=30%  0x59=35% 0x66=40%   0x73=45%
+ 129   1          //0x50=80% 0x88=55%  0x9a=60% 0xb3=70%
+ 130   1          if(mode==2)  
+ 131   1          {
+ 132   2              PW1DH = 0x01;    //high   85%
+ 133   2              PW1DL = 0x00; 
+ 134   2          }  //96   0xe6=90% 9a=60%
+ 135   1          if(mode==3)  
+ 136   1          {
+ 137   2              PW1DH = 0x00;    //flash off duty
+ 138   2              PW1DL = 0x00; 
+ 139   2          }  //
+ 140   1      
+ 141   1            if(mode==4)        
+ 142   1          {
+ 143   2              PW1DH = 0x00;    //
+ 144   2              PW1DL = 0x73; 
+ 145   2          }  //
+ 146   1      }
+ 147          
+ 148          void InitIO(void)
+ 149          {
+ 150   1          P1 = 0x10; P1UR = 0x18; P1M = 0x18;     /* 0B 0001 1000    output*/
+ 151   1          P0 = 0x00; P0UR = 0x25; P0M = 0x25;     /* 0B 0010 0101    output*/
+ 152   1          //add by lu 
+ 153   1          P1 |= 0x04;   P1UR |= 0x04;    P1M |= 0x04;  //config  for S_PWM; 
+ 154   1      }
+ 155          
+ 156          void Get_AD2(void)
+ 157          { 
+ 158   1          int i=0;
+ 159   1          total=0;
+ 160   1          AD_Data2=0;
+ 161   1          for(i=0;i<8;i++)
+ 162   1          {
+ 163   2              total +=adva[i];
+ 164   2          }
+ 165   1          AD_Data2=total>>3;
+ 166   1      
+ 167   1      }
+ 168          void judge(void)
+ 169          {
+ 170   1              uint16_t x,max,min,mid;//,total,average
+ 171   1              int i;
+ 172   1              max=0;
+ 173   1              min=4096;   
+ 174   1      
+ 175   1              for(i=0;i<8;i++){
+C51 COMPILER V9.59.0.0   MAIN                                                              01/15/2019 11:07:35 PAGE 4   
+
+ 176   2      
+ 177   2                  if(adva[i]>max)
+ 178   2                      {max=adva[i];}
+ 179   2                  if(adva[i]<min)
+ 180   2                      {min=adva[i];}
+ 181   2              }
+ 182   1              mid=(max+min)>>1; 
+ 183   1              x=0;            
+ 184   1              for(i=0;i<8;i++){
+ 185   2                  if (adva[i]>mid)
+ 186   2                      x++;
+ 187   2              }  //average
+ 188   1              if(x>4)
+ 189   1                  {power=2;}
+ 190   1              else
+ 191   1                  {power=1;}   
+ 192   1              flag = 0;
+ 193   1      }
+ 194          
+ 195          
+ 196          
+ 197          
+ 198          void main()
+ 199          {  
+ 200   1                       
+ 201   1                              //Set clk
+ 202   1          CKCON = 0X70;     
+ 203   1          CLKSEL = 0x04;          /* fcpu32M/0-7==/128-64-32-16-8-4-2-1//02=1m;03:fcpu32M=fosc/16=2M; 04:fcpu=fo
+             -sc/8=4M; 05:fcpu=fosc/4=8M; */  //原为05
+ 204   1          CLKCMD = 0x69;          /* Apply CLKSELs setting */
+ 205   1          CKCON = 0X10;         /* 增加读取程序存储器的周期。000：无；001： 1 个周期 */
+ 206   1      
+ 207   1          WDTR = 0x5A;          /* clear watchdog if watchdog enable */
+ 208   1          InitIO();
+ 209   1      
+ 210   1          BOOST = BOOST_OFF;
+ 211   1          RED_LED = LED_OFF;
+ 212   1          GREEN_LED = LED_OFF;
+ 213   1          InitADC();
+ 214   1          Timer0_Init();
+ 215   1          initpwm();
+ 216   1          //PW1M |= 0x00; //关闭pwm      
+ 217   1          
+ 218   1          //just for test 
+ 219   1        //  PW1DH = 0x00;    //
+ 220   1         // PW1DL = 0x73; 
+ 221   1          //PW1M |= 0x80;     
+ 222   1      
+ 223   1          AD_Data = 0;
+ 224   1          Get_AD();
+ 225   1      //                      wave_peak=AD_Data;
+ 226   1      //                      wave_min=AD_Data;
+ 227   1             
+ 228   1                               
+ 229   1        while(1)  {           
+ 230   2          WDTR = 0x5A;          /* clear watchdog if watchdog enable */  
+ 231   2          if(USB_INPUT == USB_OFF )      
+ 232   2          { ///////////////////* 判断为单节干电池*/           
+ 233   3               if(TRY==1)
+ 234   3              {
+ 235   4                  power=0;
+ 236   4                  TRY=0; //  如果是拨出要清0          //
+C51 COMPILER V9.59.0.0   MAIN                                                              01/15/2019 11:07:35 PAGE 5   
+
+ 237   4                  LED_CON = LED_OFF;
+ 238   4                  BOOST = BOOST_OFF;                  
+ 239   4                  ch_full=0;
+ 240   4                  ischarge=0;
+ 241   4                  Delay1ms(500); 
+ 242   4                  AD_Data2=0;
+ 243   4              }       /* 充电回来                             */
+ 244   3              RED_LED = LED_OFF;
+ 245   3              GREEN_LED = LED_OFF;
+ 246   3              CHARGE_LED = LED_OFF; 
+ 247   3      
+ 248   3              if (AD_Data>adc_max) adc_max=AD_Data;
+ 249   3              if(flag)               //0.5ms * 8 = 4ms
+ 250   3              {
+ 251   4                  judge();          //大于AD中间值超过四次时  power=2;  else power=1;
+ 252   4              }
+ 253   3              if(adc_max <= BAT_Li_Min)  
+ 254   3              {     
+ 255   4                  if (power==2)   
+ 256   4                      LED_CON = LED_ON;               
+ 257   4                  SetPWM (power);//最后
+ 258   4                  PW1M |= 0x80;               // Enable PWM output function (PW1EN)               
+ 259   4              }     
+ 260   3              else  
+ 261   3              { //////////////////不是单节干电池  直接关闭             
+ 262   4                  PW1M=0x00;          // PW1M &= (~0x80); //关闭pwm            //cut by lu
+ 263   4                  BOOST = BOOST_OFF;           
+ 264   4                  if (power==2)       
+ 265   4                  {   LED_CON = LED_ON;}
+ 266   4              /* 默认情况下打开LED控制 */  
+ 267   4              }
+ 268   3      
+ 269   3          }// if(USB_INPUT == USB_OFF )   
+ 270   2      
+ 271   2          if(USB_INPUT == USB_ON )         /* 充电，不是4.5v进来 USB插入 */
+ 272   2          {   // int i=0; 
+ 273   3              BOOST = BOOST_OFF;  
+ 274   3              LED_CON = LED_OFF;
+ 275   3              power=3;                                                
+ 276   3              /* 关闭照明 */
+ 277   3              Delay1ms(100);
+ 278   3              //              GREEN_LED = LED_ON;  
+ 279   3      
+ 280   3              if((ischarge == 0)&&(ch_full==0))  //没充电时和已经满时不判断.
+ 281   3              {        
+ 282   4                  /*                  Get_AD2();
+ 283   4                  if((AD_Data2 < BAT_Li_Min)||(AD_Data2>=BAT_Dry_3))
+ 284   4                  //判断为干电池不可充电或者3个干电池也不可充电;为锂电池不闪绿灯
+ 285   4                  {
+ 286   4                  BAT_Li_Flag = FALSE;
+ 287   4                  }   */  
+ 288   4      
+ 289   4                  if(TRY==0 && (slowcharge==0))//打开检测下是否锂电池
+ 290   4                  {
+ 291   5                      RED_LED = LED_ON;
+ 292   5                      Delay1ms(500); 
+ 293   5                      Get_AD2();
+ 294   5                      TRY=1;  
+ 295   5                      ch_full=0;
+ 296   5                      RED_LED = LED_OFF;
+ 297   5                      if((AD_Data2 >= BAT_Li_Min) && (AD_Data2<=(BAT_Li_Pull+ch_err))) 
+ 298   5                          {BAT_Li_Flag = TRUE;}
+C51 COMPILER V9.59.0.0   MAIN                                                              01/15/2019 11:07:35 PAGE 6   
+
+ 299   5                      //尝试下是否保护的锂电池
+ 300   5                      else
+ 301   5                      {
+ 302   6                          BAT_Li_Flag = FALSE; 
+ 303   6                      }
+ 304   5      
+ 305   5                  }
+ 306   4              }
+ 307   3              if(BAT_Li_Flag == FALSE )
+ 308   3              {
+ 309   4                  GREEN_LED = LED_ON;  
+ 310   4                  Delay1ms(500);
+ 311   4                  GREEN_LED = LED_OFF;
+ 312   4                  Delay1ms(500);
+ 313   4              }
+ 314   3      
+ 315   3              ////////////////////////////////////////////从没充电进入充电
+ 316   3              if((ch_full==0) )   //   (BAT_Li_Flag == TRUE)&&
+ 317   3              {
+ 318   4                  Get_AD2();
+ 319   4                  ischarge=1;                                           //change by lu
+ 320   4                  if( (AD_Data2 >= (BAT_Li_Min+ch_err)) && (AD_Data2 <= (BAT_Li_ch_end+ch_err-34)) && (slowcharg
+             -e==0))
+ 321   4                  {  
+ 322   5                      RED_LED = LED_ON;
+ 323   5                      CHARGE_LED = LED_ON;
+ 324   5                      //              GREEN_LED = LED_OFF; 
+ 325   5                                      //快充
+ 326   5                  }
+ 327   4                  ///////////////////////////////////////////切换到慢充                                                                               
+ 328   4                  if((AD_Data2>(BAT_Li_ch_end+ch_err-0)) && (slowcharge==0))   
+ 329   4                  { 
+ 330   5                      Delay1ms(100); 
+ 331   5                      Get_AD2();
+ 332   5                      if((AD_Data2>(BAT_Li_ch_end+ch_err-0)) && (slowcharge==0))  //防抖                        
+             -                                                             
+ 333   5                      {
+ 334   6                          WDTR = 0x5A;
+ 335   6                          RED_LED = LED_OFF;
+ 336   6                          CHARGE_LED = LED_OFF;
+ 337   6                          GREEN_LED = LED_OFF;
+ 338   6                          Delay1ms(500);
+ 339   6                          /*慢充闪灯*/
+ 340   6      //                    GREEN_LED = LED_ON;  
+ 341   6                          RED_LED = LED_ON;
+ 342   6                          Delay1ms(500);                                                                
+ 343   6                          CHARGE_LED = LED_OFF;
+ 344   6                          GREEN_LED = LED_OFF; 
+ 345   6                          slowcharge=1;
+ 346   6      
+ 347   6      //                    Delay1ms(100); //进慢充
+ 348   6                           RED_LED = LED_ON;    //change by lu
+ 349   6                           Delay1ms(200); 
+ 350   6      
+ 351   6                      }
+ 352   5                  }
+ 353   4                  //////////////////////////////////////////////慢充----充满
+ 354   4                  if(slowcharge==1) 
+ 355   4                  {
+ 356   5                      Get_AD2();//进来后不停获取adc
+ 357   5                      if(AD_Data2>(BAT_Li_ch_end+ch_err+0))            //change by lu
+ 358   5                      {       
+C51 COMPILER V9.59.0.0   MAIN                                                              01/15/2019 11:07:35 PAGE 7   
+
+ 359   6                                                                                GREEN_LED = LED_OFF;  
+ 360   6                          RED_LED = LED_ON;
+ 361   6                          Delay1ms(100); 
+ 362   6                          Get_AD2();
+ 363   6      
+ 364   6                          if(AD_Data2>(BAT_Li_ch_end+ch_err+0))    //防抖
+ 365   6                          {
+ 366   7                              RED_LED = LED_OFF;
+ 367   7                              CHARGE_LED = LED_OFF;        //充满
+ 368   7                              GREEN_LED = LED_ON;
+ 369   7                              ch_full=1;
+ 370   7                              slowcharge=0;                                                     
+ 371   7                              ischarge=0;
+ 372   7                          //  退出充电时的电压修正
+ 373   7                          }  
+ 374   6                      }
+ 375   5                  }// slow charge
+ 376   4              } //usb充电
+ 377   3              /////////////////////////////////////////// 充结束                            
+ 378   3      
+ 379   3          }//usb有电的情况
+ 380   2        } //while
+ 381   1      }//main
+ 382          void InitADC(void)
+ 383          {  
+ 384   1          P1M   &= ~(1<<0);   /* set P10 Input(ADC_INPUT) */
+ 385   1          P1CON |= 0x01;      /* 关闭P10的施密特触发 */
+ 386   1          
+ 387   1          ADM = 0x80;         /* 使能ADC */
+ 388   1          ADM |= 0x00;        /* 选择P10通道0 */
+ 389   1          ADR = 0x40;
+ 390   1          ADR |= 0x00;        /* Fosc/16 */
+ 391   1        //  VREFH = 0x00;
+ 392   1          VREFH = 0x00;       /* 4V --->2v*/
+ 393   1          
+ 394   1         // IEN2 |= 0x02;       /* ADC 中断 */
+ 395   1      }
+ 396          
+ 397          uint16_t Get_AD()
+ 398          {       
+ 399   1      
+ 400   1          ADM |= 0x00;        /* 选择P10通道0 */ 
+ 401   1          AD_Data = 0;   
+ 402   1          ADM |= 0x40;                                                                                                        //Start ADC
+ 403   1          while((ADM & 0x20) != 0X20);                                        //EOC
+ 404   1          ADM &= 0xdf;
+ 405   1      
+ 406   1          AD_Buffer = ADB;
+ 407   1          AD_Buffer = (AD_Buffer << 4) + (ADR & 0X0F);
+ 408   1          AD_Data = AD_Buffer;  
+ 409   1              return  AD_Data;
+ 410   1      }
+ 411          
+ 412          unsigned char k=0;y=0;
+ 413          
+ 414          void Timer0_ISR(void) interrupt ISRTimer1   // Vector @  0x0B
+ 415          {  
+ 416   1          WDTR = 0x5A;          /* clear watchdog if watchdog enable */  
+ 417   1          Get_AD();                //    每0.5ms采集一个ad
+ 418   1          adva[k]=AD_Data;
+ 419   1          if(k<8) 
+ 420   1          {
+C51 COMPILER V9.59.0.0   MAIN                                                              01/15/2019 11:07:35 PAGE 8   
+
+ 421   2            k++;
+ 422   2           
+ 423   2          }         
+ 424   1          else
+ 425   1          { 
+ 426   2              k=0; 
+ 427   2              flag = 1; 
+ 428   2              if(y<4)
+ 429   2                  {y++;}
+ 430   2              else
+ 431   2                  {y=0;}
+ 432   2          } 
+ 433   1         // S_PWM = ~S_PWM;
+ 434   1         
+ 435   1          //   P00= ~ P00;  
+ 436   1      }
+ 437          
+ 438          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    931    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     42    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      6    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
